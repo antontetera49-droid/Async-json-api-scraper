@@ -1,0 +1,124 @@
+#How to run: 1. Clone the repository via git clone. 2. Install dependencies: pip install httpx. 3. Run the script: python scraper.py.
+
+
+
+
+import asyncio
+import logging
+from typing import Any, Callable, Dict, List, Optional
+import httpx
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s"
+)
+logger = logging.getLogger(name)
+
+
+class UniversalApiScraper:
+
+  def init(
+      self,
+      base_url: str,
+      headers: Optional[Dict[str, str]] = None,
+      cookies: Optional[Dict[str, str]] = None,
+      rate_limit_delay: float = 1.0,
+  ):
+    self.base_url = base_url
+    self.headers = headers or {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+    }
+    self.cookies = cookies or {}
+    self.rate_limit_delay = rate_limit_delay
+
+  async def fetch_page(
+      self, client: httpx.AsyncClient, endpoint: str, params: Optional[Dict] = None
+  ) -> Optional[Dict[str, Any]]:
+    url = f"{self.base_url}{endpoint}"
+    try:
+      response = await client.get(
+          url,
+          headers=self.headers,
+          cookies=self.cookies,
+          params=params,
+          timeout=15,
+      )
+
+      if response.status_code == 200:
+        return response.json()
+      elif response.status_code in [401, 403]:
+        logger.error(f"[Auth Error] Access denied on {url}.")
+      elif response.status_code == 429:
+        logger.warning(f"[Rate Limit] Hit 429 on {url}. Sleeping...")
+        await asyncio.sleep(5.0)
+      else:
+        logger.warning(f"[HTTP {response.status_code}] Unexpected status.")
+
+    except httpx.RequestError as e:
+      logger.error(f"[Network Exception] {url}: {e}")
+
+    return None
+
+  async def scrape_pagination(
+      self,
+      endpoint: str,
+      total_pages: int,
+      params_builder: Callable[[int], Dict[str, Any]],
+      data_extractor: Callable[[Dict[str, Any]], List[Any]],
+  ) -> List[Any]:
+    all_data = []
+
+    async with httpx.AsyncClient() as client:
+      for page in range(1, total_pages + 1):
+        params = params_builder(page)
+        logger.info(f"Fetching page {page}/{total_pages}...")
+
+        data = await self.fetch_page(client, endpoint, params=params)
+        if data:
+          extracted = data_extractor(data)
+          if extracted:
+            all_data.extend(extracted)
+          else:
+            break
+        else:
+          break
+
+        await asyncio.sleep(self.rate_limit_delay)
+
+    return all_data
+
+
+if name == "main":
+
+  async def main():
+    scraper = UniversalApiScraper(base_url="https://jsonplaceholder.typicode.com")
+
+    def build_params(page: int) -> dict:
+      return {"_page": page, "_limit": 5}
+
+    def extract_items(response_json: list) -> list:
+      return response_json
+
+    results = await scraper.scrape_pagination(
+        endpoint="/posts",
+        total_pages=3,
+        params_builder=build_params,
+        data_extractor=extract_items,
+    )
+    print(f"Collected items: {len(results)}")
+
+  asyncio.run(main())
+
+  #How to run: 1. Clone the repository via git clone. 2. Install dependencies: pip install httpx. 3. Run the script: python scraper.py.
+
+========================================================================================================================================
+#If you need to: customize/upgrade/integrate or just dont wanna to set it by yourself, then just text me.
+#Telegram: [@Myhamed91](https://t.me/Myhamed91)
+========================================================================================================================================
+
+
+  
+  
